@@ -49,11 +49,11 @@ impl From<OutPoint> for JsonOutPoint {
     }
 }
 
-impl Into<OutPoint> for JsonOutPoint {
-    fn into(self) -> OutPoint {
+impl From<JsonOutPoint> for OutPoint {
+    fn from(val: JsonOutPoint) -> Self {
         OutPoint {
-            txid: self.txid,
-            vout: self.vout,
+            txid: val.txid,
+            vout: val.vout,
         }
     }
 }
@@ -205,7 +205,7 @@ impl Auth {
                 let mut file = File::open(path)?;
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)?;
-                let mut split = contents.splitn(2, ":");
+                let mut split = contents.splitn(2, ':');
                 Ok((
                     Some(split.next().ok_or(Error::InvalidCookieFile)?.into()),
                     Some(split.next().ok_or(Error::InvalidCookieFile)?.into()),
@@ -228,7 +228,7 @@ pub trait RpcApi: Sized {
         &self,
         id: &<T as queryable::Queryable<Self>>::Id,
     ) -> Result<T> {
-        T::query(&self, &id)
+        T::query(self, id)
     }
 
     fn get_network_info(&self) -> Result<json::GetNetworkInfoResult> {
@@ -277,6 +277,7 @@ pub trait RpcApi: Sized {
         passphrase: Option<&str>,
         avoid_reuse: Option<bool>,
         descriptors: Option<bool>,
+        load_on_startup: Option<bool>,
     ) -> Result<json::LoadWalletResult> {
         let mut args = [
             wallet.into(),
@@ -285,12 +286,13 @@ pub trait RpcApi: Sized {
             opt_into_json(passphrase)?,
             opt_into_json(avoid_reuse)?,
             opt_into_json(descriptors)?,
+            opt_into_json(load_on_startup)?,
         ];
         self.call(
             "createwallet",
             handle_defaults(
                 &mut args,
-                &[false.into(), false.into(), into_json("")?, false.into(), true.into()],
+                &[false.into(), false.into(), into_json("")?, false.into(), true.into(), null()],
             ),
         )
     }
@@ -380,9 +382,9 @@ pub trait RpcApi: Sized {
         self.call(
             "getblocktemplate",
             &[into_json(Argument {
-                mode: mode,
-                rules: rules,
-                capabilities: capabilities,
+                mode,
+                rules,
+                capabilities,
             })?],
         )
     }
@@ -421,7 +423,7 @@ pub trait RpcApi: Sized {
                         type_: json::SoftforkType::Buried,
                         bip9: None,
                         height: None,
-                        active: active,
+                        active,
                     },
                 );
             }
@@ -523,7 +525,7 @@ pub trait RpcApi: Sized {
     }
 
     fn get_balances(&self) -> Result<json::GetBalancesResult> {
-        Ok(self.call("getbalances", &[])?)
+        self.call("getbalances", &[])
     }
 
     fn get_received_by_address(&self, address: &Address, minconf: Option<u32>) -> Result<Amount> {
@@ -686,18 +688,14 @@ pub trait RpcApi: Sized {
 
     /// To unlock, use [unlock_unspent].
     fn lock_unspent(&self, outputs: &[OutPoint]) -> Result<bool> {
-        let outputs: Vec<_> = outputs
-            .into_iter()
-            .map(|o| serde_json::to_value(JsonOutPoint::from(*o)).unwrap())
-            .collect();
+        let outputs: Vec<_> =
+            outputs.iter().map(|o| serde_json::to_value(JsonOutPoint::from(*o)).unwrap()).collect();
         self.call("lockunspent", &[false.into(), outputs.into()])
     }
 
     fn unlock_unspent(&self, outputs: &[OutPoint]) -> Result<bool> {
-        let outputs: Vec<_> = outputs
-            .into_iter()
-            .map(|o| serde_json::to_value(JsonOutPoint::from(*o)).unwrap())
-            .collect();
+        let outputs: Vec<_> =
+            outputs.iter().map(|o| serde_json::to_value(JsonOutPoint::from(*o)).unwrap()).collect();
         self.call("lockunspent", &[true.into(), outputs.into()])
     }
 
@@ -817,7 +815,7 @@ pub trait RpcApi: Sized {
         rawtxs: &[R],
     ) -> Result<Vec<json::TestMempoolAcceptResult>> {
         let hexes: Vec<serde_json::Value> =
-            rawtxs.to_vec().into_iter().map(|r| r.raw_hex().into()).collect();
+            rawtxs.iter().cloned().map(|r| r.raw_hex().into()).collect();
         self.call("testmempoolaccept", &[hexes.into()])
     }
 
@@ -1143,9 +1141,9 @@ impl RpcApi for Client {
                 let json_string = serde_json::to_string(a)?;
                 serde_json::value::RawValue::from_string(json_string) // we can't use to_raw_value here due to compat with Rust 1.29
             })
-            .map(|a| a.map_err(|e| Error::Json(e)))
+            .map(|a| a.map_err(Error::Json))
             .collect::<Result<Vec<_>>>()?;
-        let req = self.client.build_request(&cmd, &raw_args);
+        let req = self.client.build_request(cmd, &raw_args);
         if log_enabled!(Debug) {
             debug!(target: "bitcoincore_rpc", "JSON-RPC request: {} {}", cmd, serde_json::Value::from(args));
         }
@@ -1191,7 +1189,7 @@ mod tests {
     #[test]
     fn test_raw_tx() {
         use bitcoin::consensus::encode;
-        let client = Client::new("http://localhost/".into(), Auth::None).unwrap();
+        let client = Client::new("http://localhost/", Auth::None).unwrap();
         let tx: bitcoin::Transaction = encode::deserialize(&Vec::<u8>::from_hex("0200000001586bd02815cf5faabfec986a4e50d25dbee089bd2758621e61c5fab06c334af0000000006b483045022100e85425f6d7c589972ee061413bcf08dc8c8e589ce37b217535a42af924f0e4d602205c9ba9cb14ef15513c9d946fa1c4b797883e748e8c32171bdf6166583946e35c012103dae30a4d7870cd87b45dd53e6012f71318fdd059c1c2623b8cc73f8af287bb2dfeffffff021dc4260c010000001976a914f602e88b2b5901d8aab15ebe4a97cf92ec6e03b388ac00e1f505000000001976a914687ffeffe8cf4e4c038da46a9b1d37db385a472d88acfd211500").unwrap()).unwrap();
 
         assert!(client.send_raw_transaction(&tx).is_err());

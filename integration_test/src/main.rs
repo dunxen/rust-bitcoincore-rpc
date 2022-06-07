@@ -109,17 +109,17 @@ fn sbtc<F: Into<f64>>(btc: F) -> SignedAmount {
 }
 
 fn get_rpc_url() -> String {
-    return std::env::var("RPC_URL").expect("RPC_URL must be set");
+    std::env::var("RPC_URL").expect("RPC_URL must be set")
 }
 
 fn get_auth() -> bitcoincore_rpc::Auth {
     if let Ok(cookie) = std::env::var("RPC_COOKIE") {
-        return Auth::CookieFile(cookie.into());
+        Auth::CookieFile(cookie.into())
     } else if let Ok(user) = std::env::var("RPC_USER") {
-        return Auth::UserPass(user, std::env::var("RPC_PASS").unwrap_or_default());
+        Auth::UserPass(user, std::env::var("RPC_PASS").unwrap_or_default())
     } else {
         panic!("Either RPC_COOKIE or RPC_USER + RPC_PASS must be set.");
-    };
+    }
 }
 
 fn main() {
@@ -132,7 +132,7 @@ fn main() {
     unsafe { VERSION = cl.version().unwrap() };
     println!("Version: {}", version());
 
-    cl.create_wallet("testwallet", None, None, None, None, Some(false)).unwrap();
+    cl.create_wallet("testwallet", None, None, None, None, Some(false), None).unwrap();
 
     test_get_mining_info(&cl);
     test_get_blockchain_info(&cl);
@@ -520,7 +520,7 @@ fn test_sign_raw_transaction_with_send_raw_transaction(cl: &Client) {
         ..Default::default()
     };
     let unspent = cl.list_unspent(Some(6), None, None, None, Some(options)).unwrap();
-    let unspent = unspent.into_iter().nth(0).unwrap();
+    let unspent = unspent.into_iter().next().unwrap();
 
     let tx = Transaction {
         version: 1,
@@ -556,7 +556,7 @@ fn test_sign_raw_transaction_with_send_raw_transaction(cl: &Client) {
         lock_time: 0,
         input: vec![TxIn {
             previous_output: OutPoint {
-                txid: txid,
+                txid,
                 vout: 0,
             },
             script_sig: Script::new(),
@@ -592,7 +592,7 @@ fn test_create_raw_transaction(cl: &Client) {
         ..Default::default()
     };
     let unspent = cl.list_unspent(Some(6), None, None, None, Some(options)).unwrap();
-    let unspent = unspent.into_iter().nth(0).unwrap();
+    let unspent = unspent.into_iter().next().unwrap();
 
     let input = json::CreateRawTransactionInput {
         txid: unspent.txid,
@@ -655,7 +655,7 @@ fn test_test_mempool_accept(cl: &Client) {
         ..Default::default()
     };
     let unspent = cl.list_unspent(Some(6), None, None, None, Some(options)).unwrap();
-    let unspent = unspent.into_iter().nth(0).unwrap();
+    let unspent = unspent.into_iter().next().unwrap();
 
     let input = json::CreateRawTransactionInput {
         txid: unspent.txid,
@@ -665,8 +665,7 @@ fn test_test_mempool_accept(cl: &Client) {
     let mut output = HashMap::new();
     output.insert(RANDOM_ADDRESS.to_string(), unspent.amount - *FEE);
 
-    let tx =
-        cl.create_raw_transaction(&[input.clone()], &output, Some(500_000), Some(false)).unwrap();
+    let tx = cl.create_raw_transaction(&[input], &output, Some(500_000), Some(false)).unwrap();
     let res = cl.test_mempool_accept(&[&tx]).unwrap();
     assert!(!res[0].allowed);
     assert!(res[0].reject_reason.is_some());
@@ -683,7 +682,7 @@ fn test_wallet_create_funded_psbt(cl: &Client) {
         ..Default::default()
     };
     let unspent = cl.list_unspent(Some(6), None, None, None, Some(options)).unwrap();
-    let unspent = unspent.into_iter().nth(0).unwrap();
+    let unspent = unspent.into_iter().next().unwrap();
 
     let input = json::CreateRawTransactionInput {
         txid: unspent.txid,
@@ -741,7 +740,7 @@ fn test_wallet_process_psbt(cl: &Client) {
         ..Default::default()
     };
     let unspent = cl.list_unspent(Some(6), None, None, None, Some(options)).unwrap();
-    let unspent = unspent.into_iter().nth(0).unwrap();
+    let unspent = unspent.into_iter().next().unwrap();
     let input = json::CreateRawTransactionInput {
         txid: unspent.txid,
         vout: unspent.vout,
@@ -749,9 +748,8 @@ fn test_wallet_process_psbt(cl: &Client) {
     };
     let mut output = HashMap::new();
     output.insert(RANDOM_ADDRESS.to_string(), btc(1));
-    let psbt = cl
-        .wallet_create_funded_psbt(&[input.clone()], &output, Some(500_000), None, Some(true))
-        .unwrap();
+    let psbt =
+        cl.wallet_create_funded_psbt(&[input], &output, Some(500_000), None, Some(true)).unwrap();
 
     let res = cl.wallet_process_psbt(&psbt.psbt, Some(true), None, Some(true)).unwrap();
     assert!(res.complete);
@@ -763,7 +761,7 @@ fn test_combine_psbt(cl: &Client) {
         ..Default::default()
     };
     let unspent = cl.list_unspent(Some(6), None, None, None, Some(options)).unwrap();
-    let unspent = unspent.into_iter().nth(0).unwrap();
+    let unspent = unspent.into_iter().next().unwrap();
     let input = json::CreateRawTransactionInput {
         txid: unspent.txid,
         vout: unspent.vout,
@@ -771,9 +769,8 @@ fn test_combine_psbt(cl: &Client) {
     };
     let mut output = HashMap::new();
     output.insert(RANDOM_ADDRESS.to_string(), btc(1));
-    let psbt1 = cl
-        .wallet_create_funded_psbt(&[input.clone()], &output, Some(500_000), None, Some(true))
-        .unwrap();
+    let psbt1 =
+        cl.wallet_create_funded_psbt(&[input], &output, Some(500_000), None, Some(true)).unwrap();
 
     let psbt = cl.combine_psbt(&[psbt1.psbt.clone(), psbt1.psbt]).unwrap();
     assert!(!psbt.is_empty());
@@ -785,7 +782,7 @@ fn test_finalize_psbt(cl: &Client) {
         ..Default::default()
     };
     let unspent = cl.list_unspent(Some(6), None, None, None, Some(options)).unwrap();
-    let unspent = unspent.into_iter().nth(0).unwrap();
+    let unspent = unspent.into_iter().next().unwrap();
     let input = json::CreateRawTransactionInput {
         txid: unspent.txid,
         vout: unspent.vout,
@@ -793,9 +790,8 @@ fn test_finalize_psbt(cl: &Client) {
     };
     let mut output = HashMap::new();
     output.insert(RANDOM_ADDRESS.to_string(), btc(1));
-    let psbt = cl
-        .wallet_create_funded_psbt(&[input.clone()], &output, Some(500_000), None, Some(true))
-        .unwrap();
+    let psbt =
+        cl.wallet_create_funded_psbt(&[input], &output, Some(500_000), None, Some(true)).unwrap();
 
     let res = cl.finalize_psbt(&psbt.psbt, Some(true)).unwrap();
     assert!(!res.complete);
@@ -869,7 +865,7 @@ fn test_estimate_smart_fee(cl: &Client) {
 
     // With a fresh node, we can't get fee estimates.
     if let Some(errors) = res.errors {
-        if errors == &["Insufficient data or no feerate found"] {
+        if errors == ["Insufficient data or no feerate found"] {
             println!("Cannot test estimate_smart_fee because no feerate found!");
             return;
         } else {
@@ -910,6 +906,7 @@ fn test_create_wallet(cl: &Client) {
         passphrase: Option<&'a str>,
         avoid_reuse: Option<bool>,
         descriptors: Option<bool>,
+        load_on_startup: Option<bool>,
     }
 
     let mut wallet_params = vec![
@@ -920,6 +917,7 @@ fn test_create_wallet(cl: &Client) {
             passphrase: None,
             avoid_reuse: None,
             descriptors: None,
+            load_on_startup: None,
         },
         WalletParams {
             name: wallet_names[1],
@@ -928,6 +926,7 @@ fn test_create_wallet(cl: &Client) {
             passphrase: None,
             avoid_reuse: None,
             descriptors: None,
+            load_on_startup: None,
         },
         WalletParams {
             name: wallet_names[2],
@@ -936,6 +935,7 @@ fn test_create_wallet(cl: &Client) {
             passphrase: None,
             avoid_reuse: None,
             descriptors: None,
+            load_on_startup: None,
         },
     ];
 
@@ -947,6 +947,7 @@ fn test_create_wallet(cl: &Client) {
             passphrase: Some("pass"),
             avoid_reuse: None,
             descriptors: None,
+            load_on_startup: None,
         });
         wallet_params.push(WalletParams {
             name: wallet_names[4],
@@ -955,6 +956,28 @@ fn test_create_wallet(cl: &Client) {
             passphrase: None,
             avoid_reuse: Some(true),
             descriptors: None,
+            load_on_startup: None,
+        });
+    }
+
+    if version() >= 210000 {
+        wallet_params.push(WalletParams {
+            name: wallet_names[5],
+            disable_private_keys: None,
+            blank: None,
+            passphrase: None,
+            avoid_reuse: None,
+            descriptors: Some(true),
+            load_on_startup: None,
+        });
+        wallet_params.push(WalletParams {
+            name: wallet_names[6],
+            disable_private_keys: None,
+            blank: None,
+            passphrase: None,
+            avoid_reuse: None,
+            descriptors: None,
+            load_on_startup: Some(true),
         });
     }
 
@@ -967,6 +990,7 @@ fn test_create_wallet(cl: &Client) {
                 wallet_param.passphrase,
                 wallet_param.avoid_reuse,
                 wallet_param.descriptors,
+                wallet_param.load_on_startup,
             )
             .unwrap();
 
@@ -1003,7 +1027,7 @@ fn test_create_wallet(cl: &Client) {
 
     // Main wallet created for tests
     assert!(wallet_list.iter().any(|w| w == "testwallet"));
-    wallet_list.retain(|w| w != "testwallet" && w != "");
+    wallet_list.retain(|w| w != "testwallet" && !w.is_empty());
 
     // Created wallets
     assert!(wallet_list.iter().zip(wallet_names).all(|(a, b)| a == b));
@@ -1070,6 +1094,7 @@ fn test_descriptor_wallet(cl: &Client) {
         Some(""),
         Some(false),
         Some(true),
+        None,
     )
     .unwrap();
 
