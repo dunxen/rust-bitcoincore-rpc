@@ -132,7 +132,7 @@ fn main() {
     unsafe { VERSION = cl.version().unwrap() };
     println!("Version: {}", version());
 
-    cl.create_wallet("testwallet", None, None, None, None, None).unwrap();
+    cl.create_wallet("testwallet", None, None, None, None, Some(false)).unwrap();
 
     test_get_mining_info(&cl);
     test_get_blockchain_info(&cl);

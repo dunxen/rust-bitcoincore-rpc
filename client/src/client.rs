@@ -290,7 +290,7 @@ pub trait RpcApi: Sized {
             "createwallet",
             handle_defaults(
                 &mut args,
-                &[false.into(), false.into(), into_json("")?, false.into(), false.into()],
+                &[false.into(), false.into(), into_json("")?, false.into(), true.into()],
             ),
         )
     }
