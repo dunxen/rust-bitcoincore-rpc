@@ -305,6 +305,11 @@ pub trait RpcApi: Sized {
         self.call("importdescriptors", &[arg])
     }
 
+    fn list_descriptors(&self, private: Option<bool>) -> Result<json::ListDescriptorsResult> {
+        let mut args = [opt_into_json(private)?];
+        self.call("listdescriptors", handle_defaults(&mut args, &[false.into()]))
+    }
+
     fn list_wallets(&self) -> Result<Vec<String>> {
         self.call("listwallets", &[])
     }

@@ -156,6 +156,7 @@ pub struct GetWalletInfoResult {
     pub private_keys_enabled: bool,
     pub avoid_reuse: Option<bool>,
     pub scanning: Option<ScanningDetails>,
+    pub descriptors: Option<bool>,
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
@@ -1720,4 +1721,21 @@ pub struct ImportDescriptorResult {
     pub success: bool,
     pub warnings: Option<Vec<String>>,
     pub error: Option<String>,
+}
+
+// List Descriptor Result
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct ListDescriptorsResult {
+    pub wallet_name: String,
+    pub descriptors: Vec<ListedDescriptor>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct ListedDescriptor {
+    pub desc: String,
+    pub timestamp: u64,
+    pub active: bool,
+    pub internal: Option<bool>,
+    pub range: Option<[i64; 2]>,
+    pub next: Option<i64>,
 }

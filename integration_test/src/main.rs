@@ -18,6 +18,8 @@ extern crate log;
 
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::thread::sleep;
+use std::time::Duration;
 
 use bitcoincore_rpc::json;
 use bitcoincore_rpc::jsonrpc::error::Error as JsonRpcError;
@@ -82,6 +84,20 @@ macro_rules! assert_not_found {
     };
 }
 
+/// Assert that the call returns a "type of wallet does not support" error.
+macro_rules! assert_wallet_does_not_support {
+    ($call:expr) => {
+        match $call.unwrap_err() {
+            Error::JsonRpc(JsonRpcError::Rpc(ref e)) if e.code == -4 => {}
+            e => panic!(
+                "expected type of wallet does not support error for {}, got: {}",
+                stringify!($call),
+                e
+            ),
+        }
+    };
+}
+
 /// Assert that the call returns the specified error message.
 macro_rules! assert_error_message {
     ($call:expr, $code:expr, $msg:expr) => {
@@ -132,7 +148,7 @@ fn main() {
     unsafe { VERSION = cl.version().unwrap() };
     println!("Version: {}", version());
 
-    cl.create_wallet("testwallet", None, None, None, None, Some(false), None).unwrap();
+    cl.create_wallet("testwallet", None, None, None, None, None, None).unwrap();
 
     test_get_mining_info(&cl);
     test_get_blockchain_info(&cl);
@@ -151,6 +167,7 @@ fn main() {
     test_send_to_address(&cl);
     test_get_received_by_address(&cl);
     test_list_unspent(&cl);
+    test_list_descriptors(&cl);
     test_get_difficulty(&cl);
     test_get_connection_count(&cl);
     test_get_raw_transaction(&cl);
@@ -236,8 +253,12 @@ fn test_get_new_address(cl: &Client) {
 
 fn test_dump_private_key(cl: &Client) {
     let addr = cl.get_new_address(None, Some(json::AddressType::Bech32)).unwrap();
-    let sk = cl.dump_private_key(&addr).unwrap();
-    assert_eq!(addr, Address::p2wpkh(&sk.public_key(&SECP), *NET).unwrap());
+    if version() < 230000 {
+        let sk = cl.dump_private_key(&addr).unwrap();
+        assert_eq!(addr, Address::p2wpkh(&sk.public_key(&SECP), *NET).unwrap());
+    } else {
+        assert_wallet_does_not_support!(cl.dump_private_key(&addr))
+    }
 }
 
 fn test_generate(cl: &Client) {
@@ -403,6 +424,22 @@ fn test_list_unspent(cl: &Client) {
     assert_eq!(unspent[0].txid, txid);
     assert_eq!(unspent[0].address.as_ref(), Some(&addr));
     assert_eq!(unspent[0].amount, btc(7));
+}
+
+fn test_list_descriptors(cl: &Client) {
+    if version() >= 230000 {
+        let public_only_descriptors = cl.list_descriptors(None).unwrap().descriptors;
+        let all_descriptors = cl.list_descriptors(Some(true)).unwrap().descriptors;
+
+        assert!(!public_only_descriptors.is_empty());
+        assert!(!public_only_descriptors
+            .iter()
+            .any(|descriptor| descriptor.desc.contains("(tprv")));
+        assert!(!all_descriptors.is_empty());
+        assert!(all_descriptors.iter().any(|descriptor| descriptor.desc.contains("(tprv")));
+    } else {
+        assert_not_found!(cl.list_descriptors(None));
+    }
 }
 
 fn test_get_difficulty(cl: &Client) {
@@ -819,9 +856,14 @@ fn test_import_public_key(cl: &Client) {
         inner: secp256k1::SecretKey::new(&mut secp256k1::rand::thread_rng()),
         compressed: true,
     };
-    cl.import_public_key(&sk.public_key(&SECP), None, None).unwrap();
-    cl.import_public_key(&sk.public_key(&SECP), Some("l"), None).unwrap();
-    cl.import_public_key(&sk.public_key(&SECP), None, Some(false)).unwrap();
+
+    if version() < 230000 {
+        cl.import_public_key(&sk.public_key(&SECP), None, None).unwrap();
+        cl.import_public_key(&sk.public_key(&SECP), Some("l"), None).unwrap();
+        cl.import_public_key(&sk.public_key(&SECP), None, Some(false)).unwrap();
+    } else {
+        assert_wallet_does_not_support!(cl.import_public_key(&sk.public_key(&SECP), None, None));
+    }
 }
 
 fn test_import_priv_key(cl: &Client) {
@@ -830,9 +872,14 @@ fn test_import_priv_key(cl: &Client) {
         inner: secp256k1::SecretKey::new(&mut secp256k1::rand::thread_rng()),
         compressed: true,
     };
-    cl.import_private_key(&sk, None, None).unwrap();
-    cl.import_private_key(&sk, Some("l"), None).unwrap();
-    cl.import_private_key(&sk, None, Some(false)).unwrap();
+
+    if version() < 230000 {
+        cl.import_private_key(&sk, None, None).unwrap();
+        cl.import_private_key(&sk, Some("l"), None).unwrap();
+        cl.import_private_key(&sk, None, Some(false)).unwrap();
+    } else {
+        assert_wallet_does_not_support!(cl.import_private_key(&sk, None, None));
+    }
 }
 
 fn test_import_address(cl: &Client) {
@@ -842,9 +889,14 @@ fn test_import_address(cl: &Client) {
         compressed: true,
     };
     let addr = Address::p2pkh(&sk.public_key(&SECP), Network::Regtest);
-    cl.import_address(&addr, None, None).unwrap();
-    cl.import_address(&addr, Some("l"), None).unwrap();
-    cl.import_address(&addr, None, Some(false)).unwrap();
+
+    if version() < 230000 {
+        cl.import_address(&addr, None, None).unwrap();
+        cl.import_address(&addr, Some("l"), None).unwrap();
+        cl.import_address(&addr, None, Some(false)).unwrap();
+    } else {
+        assert_wallet_does_not_support!(cl.import_address(&addr, None, None));
+    }
 }
 
 fn test_import_address_script(cl: &Client) {
@@ -854,10 +906,20 @@ fn test_import_address_script(cl: &Client) {
         compressed: true,
     };
     let addr = Address::p2pkh(&sk.public_key(&SECP), Network::Regtest);
-    cl.import_address_script(&addr.script_pubkey(), None, None, None).unwrap();
-    cl.import_address_script(&addr.script_pubkey(), Some("l"), None, None).unwrap();
-    cl.import_address_script(&addr.script_pubkey(), None, Some(false), None).unwrap();
-    cl.import_address_script(&addr.script_pubkey(), None, None, Some(true)).unwrap();
+
+    if version() < 230000 {
+        cl.import_address_script(&addr.script_pubkey(), None, None, None).unwrap();
+        cl.import_address_script(&addr.script_pubkey(), Some("l"), None, None).unwrap();
+        cl.import_address_script(&addr.script_pubkey(), None, Some(false), None).unwrap();
+        cl.import_address_script(&addr.script_pubkey(), None, None, Some(true)).unwrap();
+    } else {
+        assert_wallet_does_not_support!(cl.import_address_script(
+            &addr.script_pubkey(),
+            None,
+            None,
+            None
+        ));
+    }
 }
 
 fn test_estimate_smart_fee(cl: &Client) {
@@ -898,7 +960,7 @@ fn test_rescan_blockchain(cl: &Client) {
 }
 
 fn test_create_wallet(cl: &Client) {
-    let wallet_names = vec!["alice", "bob", "carol", "denise", "emily"];
+    let wallet_names = vec!["alice", "bob", "carol", "denise", "emily", "frank", "gertrude"];
 
     struct WalletParams<'a> {
         name: &'a str,
@@ -1012,8 +1074,6 @@ fn test_create_wallet(cl: &Client) {
 
         let has_private_keys = !wallet_param.disable_private_keys.unwrap_or(false);
         assert_eq!(wallet_info.private_keys_enabled, has_private_keys);
-        let has_hd_seed = has_private_keys && !wallet_param.blank.unwrap_or(false);
-        assert_eq!(wallet_info.hd_seed_id.is_some(), has_hd_seed);
         let has_avoid_reuse = wallet_param.avoid_reuse.unwrap_or(false);
         assert_eq!(wallet_info.avoid_reuse.unwrap_or(false), has_avoid_reuse);
         assert_eq!(
